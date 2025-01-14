@@ -8,6 +8,7 @@
 #include "rasterizer.hpp"
 #include <opencv2/opencv.hpp>
 #include <math.h>
+#include <queue>
 
 
 rst::pos_buf_id rst::rasterizer::load_positions(const std::vector<Eigen::Vector3f> &positions)
@@ -43,6 +44,14 @@ auto to_vec4(const Eigen::Vector3f& v3, float w = 1.0f)
 static bool insideTriangle(int x, int y, const Vector3f* _v)
 {   
     // TODO : Implement this function to check if the point (x, y) is inside the triangle represented by _v[0], _v[1], _v[2]
+    Vector3f P;
+    P << (float)x , (float) y , 0;
+    float z1 = (P - _v[0]).cross(_v[0] - _v[1])(2);
+    float z2 = (P - _v[1]).cross(_v[1] - _v[2])(2);
+    float z3 = (P - _v[2]).cross(_v[2] - _v[0])(2);
+    if ((z1<0 && z2<0 && z3<0) || (z1>0 && z2>0 && z3>0))
+        return true;
+    return false;
 }
 
 static std::tuple<float, float, float> computeBarycentric2D(float x, float y, const Vector3f* v)
@@ -102,19 +111,37 @@ void rst::rasterizer::draw(pos_buf_id pos_buffer, ind_buf_id ind_buffer, col_buf
     }
 }
 
+
+float get_z_interpolate(int x, int y, const Triangle& t) {
+    auto[alpha, beta, gamma] = computeBarycentric2D(x, y, t.v);
+    auto v = t.toVector4();
+    float w_reciprocal = 1.0/(alpha / v[0].w() + beta / v[1].w() + gamma / v[2].w());
+    float z_interpolated = alpha * v[0].z() / v[0].w() + beta * v[1].z() / v[1].w() + gamma * v[2].z() / v[2].w();
+    z_interpolated *= w_reciprocal;
+    return z_interpolated;
+}
+
 //Screen space rasterization
 void rst::rasterizer::rasterize_triangle(const Triangle& t) {
     auto v = t.toVector4();
-    
     // TODO : Find out the bounding box of current triangle.
     // iterate through the pixel and find if the current pixel is inside the triangle
-
-    // If so, use the following code to get the interpolated z value.
-    //auto[alpha, beta, gamma] = computeBarycentric2D(x, y, t.v);
-    //float w_reciprocal = 1.0/(alpha / v[0].w() + beta / v[1].w() + gamma / v[2].w());
-    //float z_interpolated = alpha * v[0].z() / v[0].w() + beta * v[1].z() / v[1].w() + gamma * v[2].z() / v[2].w();
-    //z_interpolated *= w_reciprocal;
-
+    int xm = (int)MIN(MIN(v[0](0), v[1](0)), v[2](0));
+    int ym = (int)MIN(MIN(v[0](1), v[1](1)), v[2](1));
+    int xM = (int)MAX(MAX(v[0](0), v[1](0)), v[2](0));
+    int yM = (int)MAX(MAX(v[0](1), v[1](1)), v[2](1));
+    for (int x = xm; x <= xM; x++) {
+        for (int y = ym; y <= yM; y++) {
+            if (insideTriangle(x, y, t.v)){
+                float z = get_z_interpolate(x, y, t);
+                int index = get_index(x, y);
+                if (z < depth_buf[index]){
+                    depth_buf[index] = z;
+                    frame_buf[index] = t.getColor();
+                }
+            }
+        }
+    }
     // TODO : set the current pixel (use the set_pixel function) to the color of the triangle (use getColor function) if it should be painted.
 }
 
