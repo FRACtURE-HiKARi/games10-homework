@@ -49,7 +49,21 @@ Eigen::Matrix4f get_model_matrix(float angle)
 
 Eigen::Matrix4f get_projection_matrix(float eye_fov, float aspect_ratio, float zNear, float zFar)
 {
-    // TODO: Use the same projection matrix from the previous assignments
+    // TODO: Use the same projection matrix from the previous 
+    float t = zNear * tanf(eye_fov / 360 * MY_PI);
+    float r = t * aspect_ratio;
+    Eigen::Matrix4f Mortho1 = Eigen::Matrix4f::Identity();
+    Eigen::Matrix4f Mortho2 = Eigen::Matrix4f::Identity();
+    Eigen::Vector4f diag;
+    diag << -1/r, -1/t, 2/(zNear - zFar), 1;
+    Mortho1.diagonal() = diag;
+    Mortho2(2, 3) = -(zNear + zFar) / 2;
+    Eigen::Matrix4f Mpersp;
+    Mpersp << zNear, 0, 0, 0, \
+              0, zNear, 0, 0, \
+              0, 0, zNear + zFar, -zNear * zFar, \
+              0, 0, 1, 0;
+    return Mortho1 * Mortho2 * Mpersp;
 
 }
 
@@ -84,7 +98,7 @@ Eigen::Vector3f texture_fragment_shader(const fragment_shader_payload& payload)
     if (payload.texture)
     {
         // TODO: Get the texture value at the texture coordinates of the current fragment
-
+        return_color = payload.texture->getColor(payload.tex_coords.x(), payload.tex_coords.y());
     }
     Eigen::Vector3f texture_color;
     texture_color << return_color.x(), return_color.y(), return_color.z();
@@ -112,6 +126,15 @@ Eigen::Vector3f texture_fragment_shader(const fragment_shader_payload& payload)
     {
         // TODO: For each light source in the code, calculate what the *ambient*, *diffuse*, and *specular* 
         // components are. Then, accumulate that result on the *result_color* object.
+        float R2 = (light.position - point).dot(light.position - point);
+        Eigen::Vector3f localIntensity = light.intensity / R2;
+        Eigen::Vector3f l = (light.position - point).normalized();
+        Eigen::Vector3f v = (eye_pos - point).normalized();
+        Eigen::Vector3f h = (l + v).normalized();
+        auto L_diffuse = kd.asDiagonal() * localIntensity * MAX(0, normal.dot(l));
+        auto L_specular = ks.asDiagonal() * localIntensity * pow(MAX(0, normal.dot(h)), p);
+        auto L_ambient = ka.asDiagonal() * amb_light_intensity;
+        result_color = result_color + L_diffuse + L_specular + L_ambient;
 
     }
 
@@ -142,7 +165,15 @@ Eigen::Vector3f phong_fragment_shader(const fragment_shader_payload& payload)
     {
         // TODO: For each light source in the code, calculate what the *ambient*, *diffuse*, and *specular* 
         // components are. Then, accumulate that result on the *result_color* object.
-        
+        float R2 = (light.position - point).dot(light.position - point);
+        Eigen::Vector3f localIntensity = light.intensity / R2;
+        Eigen::Vector3f l = (light.position - point).normalized();
+        Eigen::Vector3f v = (eye_pos - point).normalized();
+        Eigen::Vector3f h = (l + v).normalized();
+        auto L_diffuse = kd.asDiagonal() * localIntensity * MAX(0, normal.dot(l));
+        auto L_specular = ks.asDiagonal() * localIntensity * pow(MAX(0, normal.dot(h)), p);
+        auto L_ambient = ka.asDiagonal() * amb_light_intensity;
+        result_color = result_color + L_diffuse + L_specular + L_ambient;
     }
 
     return result_color * 255.f;
