@@ -5,7 +5,7 @@
 #include <fstream>
 #include "Scene.hpp"
 #include "Renderer.hpp"
-
+#include "MultiThread.hpp"
 
 inline float deg2rad(const float& deg) { return deg * M_PI / 180.0; }
 
@@ -24,7 +24,7 @@ void Renderer::Render(const Scene& scene)
     int m = 0;
 
     // change the spp value to change sample ammount
-    int spp = 16;
+    int spp = 64;
     std::cout << "SPP: " << spp << "\n";
     for (uint32_t j = 0; j < scene.height; ++j) {
         for (uint32_t i = 0; i < scene.width; ++i) {
@@ -35,12 +35,15 @@ void Renderer::Render(const Scene& scene)
 
             Vector3f dir = normalize(Vector3f(-x, y, 1));
             for (int k = 0; k < spp; k++){
-                framebuffer[m] += scene.castRay(Ray(eye_pos, dir), 0) / spp;  
+                //framebuffer[m] += scene.castRay(Ray(eye_pos, dir), 0) / spp;
+                multi_cast(scene, Ray(eye_pos, dir), spp, framebuffer[m]);
             }
             m++;
         }
         UpdateProgress(j / (float)scene.height);
     }
+    // wait until all threads done
+    thread_sync();
     UpdateProgress(1.f);
 
     // save framebuffer to file
