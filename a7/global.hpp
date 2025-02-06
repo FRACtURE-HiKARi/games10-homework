@@ -51,3 +51,5 @@ inline void UpdateProgress(float progress)
     std::cout << "] " << int(progress * 100.0) << " %\r";
     std::cout.flush();
 };
+
+inline float deg2rad(const float& deg) { return deg * M_PI / 180.0; }

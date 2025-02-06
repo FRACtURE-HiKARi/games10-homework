@@ -9,47 +9,57 @@
 #include <cmath>
 #include <algorithm>
 
+#ifdef __CUDACC__
+#include <cuda_runtime.h>
+#define HOST_DEVICE __host__ __device__
+#define __MIN(X, Y) (X < Y ? X : Y)
+#define __MAX(X, Y) (X > Y ? X : Y)
+#else
+#define HOST_DEVICE
+#define __MIN(X, Y) std::min(X, Y)
+#define __MAX(X, Y) std::max(X, Y)
+#endif
+
 class Vector3f {
 public:
     float x, y, z;
-    Vector3f() : x(0), y(0), z(0) {}
-    Vector3f(float xx) : x(xx), y(xx), z(xx) {}
-    Vector3f(float xx, float yy, float zz) : x(xx), y(yy), z(zz) {}
-    Vector3f operator * (const float &r) const { return Vector3f(x * r, y * r, z * r); }
-    Vector3f operator / (const float &r) const { return Vector3f(x / r, y / r, z / r); }
+    HOST_DEVICE inline Vector3f() : x(0), y(0), z(0) {}
+    HOST_DEVICE inline Vector3f(float xx) : x(xx), y(xx), z(xx) {}
+    HOST_DEVICE inline Vector3f(float xx, float yy, float zz) : x(xx), y(yy), z(zz) {}
+    HOST_DEVICE inline Vector3f operator * (const float &r) const { return Vector3f(x * r, y * r, z * r); }
+    HOST_DEVICE inline Vector3f operator / (const float &r) const { return Vector3f(x / r, y / r, z / r); }
 
-    float norm() {return std::sqrt(x * x + y * y + z * z);}
-    Vector3f normalized() {
+    HOST_DEVICE inline float norm() {return std::sqrt(x * x + y * y + z * z);}
+    HOST_DEVICE inline Vector3f normalized() {
         float n = std::sqrt(x * x + y * y + z * z);
         return Vector3f(x / n, y / n, z / n);
     }
 
-    Vector3f operator * (const Vector3f &v) const { return Vector3f(x * v.x, y * v.y, z * v.z); }
-    Vector3f operator - (const Vector3f &v) const { return Vector3f(x - v.x, y - v.y, z - v.z); }
-    Vector3f operator + (const Vector3f &v) const { return Vector3f(x + v.x, y + v.y, z + v.z); }
-    Vector3f operator - () const { return Vector3f(-x, -y, -z); }
-    Vector3f& operator += (const Vector3f &v) { x += v.x, y += v.y, z += v.z; return *this; }
-    friend Vector3f operator * (const float &r, const Vector3f &v)
+    HOST_DEVICE inline Vector3f operator * (const Vector3f &v) const { return Vector3f(x * v.x, y * v.y, z * v.z); }
+    HOST_DEVICE inline Vector3f operator - (const Vector3f &v) const { return Vector3f(x - v.x, y - v.y, z - v.z); }
+    HOST_DEVICE inline Vector3f operator + (const Vector3f &v) const { return Vector3f(x + v.x, y + v.y, z + v.z); }
+    HOST_DEVICE inline Vector3f operator - () const { return Vector3f(-x, -y, -z); }
+    HOST_DEVICE inline Vector3f& operator += (const Vector3f &v) { x += v.x, y += v.y, z += v.z; return *this; }
+    HOST_DEVICE inline friend Vector3f operator * (const float &r, const Vector3f &v)
     { return Vector3f(v.x * r, v.y * r, v.z * r); }
-    friend std::ostream & operator << (std::ostream &os, const Vector3f &v)
+    inline friend std::ostream & operator << (std::ostream &os, const Vector3f &v)
     { return os << v.x << ", " << v.y << ", " << v.z; }
-    double       operator[](int index) const;
-    double&      operator[](int index);
 
 
-    static Vector3f Min(const Vector3f &p1, const Vector3f &p2) {
-        return Vector3f(std::min(p1.x, p2.x), std::min(p1.y, p2.y),
-                       std::min(p1.z, p2.z));
+    HOST_DEVICE inline static Vector3f Min(const Vector3f &p1, const Vector3f &p2) {
+        return Vector3f(__MIN(p1.x, p2.x), __MIN(p1.y, p2.y),
+                       __MIN(p1.z, p2.z));
     }
 
-    static Vector3f Max(const Vector3f &p1, const Vector3f &p2) {
-        return Vector3f(std::max(p1.x, p2.x), std::max(p1.y, p2.y),
-                       std::max(p1.z, p2.z));
+    HOST_DEVICE inline static Vector3f Max(const Vector3f &p1, const Vector3f &p2) {
+        return Vector3f(__MAX(p1.x, p2.x), __MAX(p1.y, p2.y),
+                       __MAX(p1.z, p2.z));
     }
-};
-inline double Vector3f::operator[](int index) const {
+    HOST_DEVICE inline float operator[](int index) const {
     return (&x)[index];
 }
+};
+//HOST_DEVICE inline double Vector3f::operator[]
 
 
 class Vector2f
@@ -63,10 +73,10 @@ public:
     float x, y;
 };
 
-inline Vector3f lerp(const Vector3f &a, const Vector3f& b, const float &t)
+HOST_DEVICE inline Vector3f lerp(const Vector3f &a, const Vector3f& b, const float &t)
 { return a * (1 - t) + b * t; }
 
-inline Vector3f normalize(const Vector3f &v)
+HOST_DEVICE inline Vector3f normalize(const Vector3f &v)
 {
     float mag2 = v.x * v.x + v.y * v.y + v.z * v.z;
     if (mag2 > 0) {
@@ -77,10 +87,10 @@ inline Vector3f normalize(const Vector3f &v)
     return v;
 }
 
-inline float dotProduct(const Vector3f &a, const Vector3f &b)
+HOST_DEVICE inline float dotProduct(const Vector3f &a, const Vector3f &b)
 { return a.x * b.x + a.y * b.y + a.z * b.z; }
 
-inline Vector3f crossProduct(const Vector3f &a, const Vector3f &b)
+HOST_DEVICE inline Vector3f crossProduct(const Vector3f &a, const Vector3f &b)
 {
     return Vector3f(
             a.y * b.z - a.z * b.y,
@@ -89,6 +99,7 @@ inline Vector3f crossProduct(const Vector3f &a, const Vector3f &b)
     );
 }
 
-
+#undef __MAX
+#undef __MIN
 
 #endif //RAYTRACING_VECTOR_H

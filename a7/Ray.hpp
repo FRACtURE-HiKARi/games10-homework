@@ -5,6 +5,17 @@
 #ifndef RAYTRACING_RAY_H
 #define RAYTRACING_RAY_H
 #include "Vector.hpp"
+
+#ifdef __CUDACC__
+#include <cuda_runtime.h>
+#include <float.h>
+#define HOST_DEVICE __host__ __device__
+#define FLOAT_MAX FLT_MAX
+#else
+#define HOST_DEVICE
+#define FLOAT_MAX std::numeric_limits<double>::max()
+#endif
+
 struct Ray{
     //Destination = origin + t*direction
     Vector3f origin;
@@ -12,10 +23,10 @@ struct Ray{
     double t;//transportation time,
     double t_min, t_max;
 
-    Ray(const Vector3f& ori, const Vector3f& dir, const double _t = 0.0): origin(ori), direction(dir),t(_t) {
+    HOST_DEVICE inline Ray(const Vector3f& ori, const Vector3f& dir, const double _t = 0.0): origin(ori), direction(dir),t(_t) {
         direction_inv = Vector3f(1./direction.x, 1./direction.y, 1./direction.z);
         t_min = 0.0;
-        t_max = std::numeric_limits<double>::max();
+        t_max = FLOAT_MAX;
 
     }
 

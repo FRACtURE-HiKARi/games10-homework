@@ -9,7 +9,15 @@
 #include <cassert>
 #include <array>
 
-bool rayTriangleIntersect(const Vector3f& v0, const Vector3f& v1,
+#ifdef __CUDACC__
+#include <cuda_runtime.h>
+#include <float.h>
+#define HOST_DEVICE __host__ __device__
+#else
+#define HOST_DEVICE
+#endif
+
+HOST_DEVICE inline bool rayTriangleIntersect(const Vector3f& v0, const Vector3f& v1,
                           const Vector3f& v2, const Vector3f& orig,
                           const Vector3f& dir, float& tnear, float& u, float& v)
 {
@@ -49,7 +57,7 @@ public:
     float area;
     Material* m;
 
-    Triangle(Vector3f _v0, Vector3f _v1, Vector3f _v2, Material* _m = nullptr)
+    HOST_DEVICE Triangle(Vector3f _v0, Vector3f _v1, Vector3f _v2, Material* _m = nullptr)
         : v0(_v0), v1(_v1), v2(_v2), m(_m)
     {
         e1 = v1 - v0;
@@ -78,10 +86,10 @@ public:
         pos.normal = this->normal;
         pdf = 1.0f / area;
     }
-    float getArea(){
+    HOST_DEVICE float getArea(){
         return area;
     }
-    bool hasEmit(){
+    HOST_DEVICE bool hasEmit(){
         return m->hasEmission();
     }
 };
@@ -199,10 +207,10 @@ public:
         bvh->Sample(pos, pdf);
         pos.emit = m->getEmission();
     }
-    float getArea(){
+    HOST_DEVICE float getArea(){
         return area;
     }
-    bool hasEmit(){
+    HOST_DEVICE bool hasEmit(){
         return m->hasEmission();
     }
 

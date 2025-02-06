@@ -6,6 +6,14 @@
 #define RAYTRACING_MATERIAL_H
 
 #include "Vector.hpp"
+#ifdef __CUDACC__
+#include <cuda_runtime.h>
+#include <float.h>
+#define HOST_DEVICE __host__ __device__
+#define EPSILON 0.00001f
+#else
+#define HOST_DEVICE
+#endif
 
 enum MaterialType { DIFFUSE};
 
@@ -70,22 +78,29 @@ private:
         // As a consequence of the conservation of energy, transmittance is given by:
         // kt = 1 - kr;
     }
-
-    Vector3f toWorld(const Vector3f &a, const Vector3f &N){
+public:
+#ifdef __CUDACC
+#define ABS abs
+#define SQRT sqrt
+#else
+#define ABS std::fabs
+#define SQRT std::sqrt
+#endif
+    HOST_DEVICE Vector3f toWorld(const Vector3f &a, const Vector3f &N){
         Vector3f B, C;
-        if (std::fabs(N.x) > std::fabs(N.y)){
-            float invLen = 1.0f / std::sqrt(N.x * N.x + N.z * N.z);
+        if (ABS(N.x) > ABS(N.y)){
+            float invLen = 1.0f / SQRT(N.x * N.x + N.z * N.z);
             C = Vector3f(N.z * invLen, 0.0f, -N.x *invLen);
         }
         else {
-            float invLen = 1.0f / std::sqrt(N.y * N.y + N.z * N.z);
+            float invLen = 1.0f / SQRT(N.y * N.y + N.z * N.z);
             C = Vector3f(0.0f, N.z * invLen, -N.y *invLen);
         }
         B = crossProduct(C, N);
         return a.x * B + a.y * C + a.z * N;
     }
-
-public:
+#undef ABS
+#undef SQRT
     MaterialType m_type;
     //Vector3f m_color;
     Vector3f m_emission;
@@ -95,18 +110,18 @@ public:
     //Texture tex;
 
     inline Material(MaterialType t=DIFFUSE, Vector3f e=Vector3f(0,0,0));
-    inline MaterialType getType();
+    HOST_DEVICE inline MaterialType getType();
     //inline Vector3f getColor();
-    inline Vector3f getColorAt(double u, double v);
-    inline Vector3f getEmission();
-    inline bool hasEmission();
+    HOST_DEVICE inline Vector3f getColorAt(double u, double v);
+    HOST_DEVICE inline Vector3f getEmission();
+    HOST_DEVICE inline bool hasEmission();
 
     // sample a ray by Material properties
     inline Vector3f sample(const Vector3f &wi, const Vector3f &N);
     // given a ray, calculate the PdF of this ray
-    inline float pdf(const Vector3f &wi, const Vector3f &wo, const Vector3f &N);
+    HOST_DEVICE inline float pdf(const Vector3f &wi, const Vector3f &wo, const Vector3f &N);
     // given a ray, calculate the contribution of this ray
-    inline Vector3f eval(const Vector3f &wi, const Vector3f &wo, const Vector3f &N);
+    HOST_DEVICE inline Vector3f eval(const Vector3f &wi, const Vector3f &wo, const Vector3f &N);
 
 };
 
@@ -145,6 +160,7 @@ Vector3f Material::sample(const Vector3f &wi, const Vector3f &N){
     }
 }
 
+HOST_DEVICE
 float Material::pdf(const Vector3f &wi, const Vector3f &wo, const Vector3f &N){
     switch(m_type){
         case DIFFUSE:

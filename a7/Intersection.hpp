@@ -9,13 +9,23 @@
 class Object;
 class Sphere;
 
+#ifdef __CUDACC__
+#include <cuda_runtime.h>
+#include <float.h>
+#define HOST_DEVICE __host__ __device__
+#define __MAX DBL_MAX
+#else
+#define HOST_DEVICE
+#define __MAX std::numeric_limits<double>::max()
+#endif
+
 struct Intersection
 {
-    Intersection(){
+    HOST_DEVICE Intersection(){
         happened=false;
         coords=Vector3f();
         normal=Vector3f();
-        distance= std::numeric_limits<double>::max();
+        distance= __MAX;
         obj =nullptr;
         m=nullptr;
     }
@@ -28,4 +38,5 @@ struct Intersection
     Object* obj;
     Material* m;
 };
+#undef __MAX
 #endif //RAYTRACING_INTERSECTION_H
