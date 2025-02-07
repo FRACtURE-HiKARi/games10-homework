@@ -99,8 +99,6 @@ public:
         B = crossProduct(C, N);
         return a.x * B + a.y * C + a.z * N;
     }
-#undef ABS
-#undef SQRT
     MaterialType m_type;
     //Vector3f m_color;
     Vector3f m_emission;
@@ -160,6 +158,8 @@ Vector3f Material::sample(const Vector3f &wi, const Vector3f &N){
     }
 }
 
+#undef ABS
+#undef SQRT
 HOST_DEVICE
 float Material::pdf(const Vector3f &wi, const Vector3f &wo, const Vector3f &N){
     switch(m_type){
@@ -175,6 +175,7 @@ float Material::pdf(const Vector3f &wi, const Vector3f &wo, const Vector3f &N){
     }
 }
 
+HOST_DEVICE
 Vector3f Material::eval(const Vector3f &wi, const Vector3f &wo, const Vector3f &N){
     switch(m_type){
         case DIFFUSE:

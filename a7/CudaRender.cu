@@ -1,9 +1,13 @@
 #include "Scene.hpp"
 #include "CudaRender.h"
 #include "CudaHelper.hpp"
-#define MAX_DEPTH 16
+#include <thread>
+#include <chrono>
+
+#define MAX_DEPTH 64
 #define MAX_TRIANGLES 1024
 #define P_RR 0.8
+#define COMP(X) X.x, X.y, X.z
 __device__ float spp;
 __device__ float scale_d;
 __device__ float imageAspectRatio_d;
@@ -12,14 +16,16 @@ __device__ int height_d;
 __device__ Vector3f* eye_pos_d;
 Vector3f* framebuffer;
 Triangle_d* triangles;
+Triangle* triangles_h;
 __device__ int num_triangles = 0;
+__device__ unsigned long long num_finished = 0;
 int num_pixels;
 
 inline void printLastErr()
 {
     cudaError_t launchErr = cudaGetLastError();
     if (launchErr != cudaSuccess) {
-        printf("%e: %s\n", cudaGetErrorString(launchErr));
+        printf("Last Error: %s\n", cudaGetErrorString(launchErr));
     }
     else {
         printf("Success. \n");
@@ -28,7 +34,7 @@ inline void printLastErr()
 
 void init_objects(const Scene& scene)
 {
-    Triangle* triangles_h = (Triangle*)malloc(sizeof(Triangle) * MAX_TRIANGLES);
+    triangles_h = (Triangle*)malloc(sizeof(Triangle) * MAX_TRIANGLES);
     int i = 0;
     for (auto o: scene.objects)
     {
@@ -41,6 +47,8 @@ void init_objects(const Scene& scene)
         }
     }
     cudaMalloc(&triangles, i * sizeof(Triangle_d));
+    cudaMemcpyToSymbol(num_triangles, &i, sizeof(int));
+    printf("Num Triangles: %d\n", i);
     for (int j = 0; j < i; j++)
     {
         triangleToDevice(&triangles[j], triangles_h[j]);
@@ -61,45 +69,41 @@ void init_memory(const Scene& scene, int spp)
     init_objects(scene);
 }
 
-__device__ Intersection_d getClosest(const Ray &ray, Triangle_d* ts)
+void clean_up()
 {
-    float tnear, u, v;
-    Triangle_d* nearest;
-    bool inter = false;
-    float tMin;
+    free(triangles_h);
+    cudaFree(framebuffer);
+    cudaFree(triangles);
+    Vector3f* tmp;
+    cudaMemcpyFromSymbol(&tmp, eye_pos_d, sizeof(Vector3f*));
+    cudaFree(tmp);
+}
+
+__device__ Intersection_d getClosest(const Ray& ray, Triangle_d* ts, int depth)
+{
+    Intersection_d result;
     for (int i = 0; i < num_triangles; i++)
     {
-        tMin = FLT_MAX;
         auto t = ts[i];
-        if (rayTriangleIntersect(t.v0, t.v1, t.v2, ray.origin, ray.direction, tnear, u, v))
-        { 
-            if (tnear < tMin)
-            {
-                tMin = tnear;
-                nearest = &t;
-                inter = true;
-            }
+        Intersection_d inter = t.getIntersection(ray);
+        if (inter.happened && inter.distance < result.distance)
+        {
+            result = inter;
         }
     }
-    Intersection_d r;
-    if (inter){
-        r.happened = true; 
-        r.coords = ray.origin + ray.direction * tMin;
-        r.tcoords = Vector3f{u, v, 1-u-v};
-        r.normal = nearest->normal;
-        r.emit = nearest->m->getEmission();
-        r.distance = tMin;
-        r.obj = nearest;
-        r.m = nearest->m;
-    }
-    return r;
+    return result;
+}
+
+__device__ Intersection_d getClosest(const Ray &ray, Triangle_d* ts)
+{
+    return getClosest(ray, ts, 0);
 }
 
 // Implementation of PathTracing in CUDA
 __device__ Vector3f trace(const Ray& ray, Triangle_d* ts, curandState* state)
 {
     int depth = 0;
-    Vector3f stack_dir[MAX_DEPTH];\
+    Vector3f stack_dir[MAX_DEPTH];
     Vector3f stack_multiplier[MAX_DEPTH];
 
     Ray currentRay = ray;
@@ -107,13 +111,12 @@ __device__ Vector3f trace(const Ray& ray, Triangle_d* ts, curandState* state)
     {
         stack_dir[depth] = Vector3f(0);
         stack_multiplier[depth] = Vector3f(0);
-        Intersection_d inter = getClosest(ray, ts);
+        Intersection_d inter = getClosest(currentRay, ts);
         if (!inter.happened){
             // return Vector3f(0);
             break;
         }
         if (inter.m->hasEmission()){
-            //return inter.m->getEmission();
             stack_dir[depth] = inter.m->getEmission();
             break;
         }
@@ -125,7 +128,7 @@ __device__ Vector3f trace(const Ray& ray, Triangle_d* ts, curandState* state)
         // test if blocked
         Vector3f x = inter_light.coords;
         Vector3f ws = (x - p).normalized();
-        Vector3f wo = ray.direction;
+        Vector3f wo = currentRay.direction;
         Vector3f N = inter.normal;
         Ray dir_ray(p, ws);
         Intersection_d block_test = getClosest(dir_ray, ts);
@@ -142,7 +145,6 @@ __device__ Vector3f trace(const Ray& ray, Triangle_d* ts, curandState* state)
         Vector3f wi = sampleMaterial(m, wo, N, state);
         Ray indir_ray(p, wi);
         Intersection_d nonemit_inter = getClosest(indir_ray, ts);
-        
         if (nonemit_inter.happened && !nonemit_inter.m->hasEmission())
         {
             //L_indir = trace(indir_ray, ts, depth + 1, state) * m->eval(wo, wi, N) * dotProduct(wi, N) / m->pdf(wo, wi, N) / P_RR;
@@ -173,21 +175,21 @@ void CUDA_PT(Vector3f* fb, Triangle_d* ts, int spp, curandState* states)
     int xi = threadIdx.x + blockIdx.x * blockDim.x;
     int yi = threadIdx.y + blockIdx.y * blockDim.y;
     int tid = xi + width_d * yi;
-    // Check if execution starts
-    if (tid == 0) {
-        printf("Kernel started, idx: %d\n", tid);
-    }
     float x = (2 * (xi + 0.5) / (float)width_d - 1) * imageAspectRatio_d * scale_d;
-    float y = (1 - 2 * (yi + 0.5) / (float)height_d - 1) * imageAspectRatio_d * scale_d;
-    curand_init(1234, tid, 0, &states[tid]);
+    float y = (1 - 2 * (yi + 0.5) / (float)height_d) * scale_d;
+    curand_init(4321, tid, 0, &states[tid]);
     Vector3f result;
-    Ray ray(*eye_pos_d, Vector3f(-x, y, 1).normalized());
+    Vector3f dir = normalize(Vector3f(-x, y, 1));
+    Ray ray(*eye_pos_d, dir);
     for (int i = 0; i < spp; i++)
     {
         result += trace(ray, ts, &states[tid]) / (float)spp;
     }
     fb[tid] = result;
+    atomicAdd(&num_finished, 1ULL);
 }
+
+void gpuWaitThread() {cudaDeviceSynchronize();}
 
 #define BLOCK_DIM 32
 void cudaRender(Vector3f* fb_h, const Scene& scene, int spp)
@@ -204,10 +206,6 @@ void cudaRender(Vector3f* fb_h, const Scene& scene, int spp)
 
     curandState* states_d;
     cudaMalloc(&states_d, num_pixels * sizeof(curandState));
-    if (framebuffer == nullptr || triangles == nullptr || states_d == nullptr) {
-        printf("One or more device pointers are null!\n");
-        return;
-    }
 
     printf("Starting Kernel\n");
     CUDA_PT<<<gridDim, blockDim>>>(framebuffer, triangles, spp, states_d);
@@ -216,6 +214,4 @@ void cudaRender(Vector3f* fb_h, const Scene& scene, int spp)
     cudaDeviceSynchronize();
     printLastErr();
     cudaMemcpy(fb_h, framebuffer, sizeof(Vector3f) * num_pixels, cudaMemcpyDeviceToHost);
-    cudaFree(framebuffer);
-    cudaFree(triangles);
 }

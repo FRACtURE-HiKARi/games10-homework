@@ -7,6 +7,7 @@
 #include "Renderer.hpp"
 #include "MultiThread.hpp"
 #include "CudaRender.h"
+#include "Triangle.hpp"
 
 //const float EPSILON = 0.00001;
 #define EPSILON 0.00001f
@@ -24,7 +25,7 @@ void Renderer::Render(const Scene& scene)
     int m = 0;
 
     // change the spp value to change sample ammount
-    int spp = 64;
+    int spp = 16;
     std::cout << "SPP: " << spp << "\n";
 #ifndef CUDA_PARALLEL
     for (uint32_t j = 0; j < scene.height; ++j) {
@@ -33,7 +34,6 @@ void Renderer::Render(const Scene& scene)
             float x = (2 * (i + 0.5) / (float)scene.width - 1) *
                       imageAspectRatio * scale;
             float y = (1 - 2 * (j + 0.5) / (float)scene.height) * scale;
-
             Vector3f dir = normalize(Vector3f(-x, y, 1));
             for (int k = 0; k < spp; k++){
                 //framebuffer[m] += scene.castRay(Ray(eye_pos, dir), 0) / spp;
@@ -45,10 +45,10 @@ void Renderer::Render(const Scene& scene)
     }
     // wait until all threads done
     thread_sync();
+    UpdateProgress(1.f);
 #else
     cudaRender(framebuffer.data(), scene, spp);
 #endif
-    UpdateProgress(1.f);
 
     // save framebuffer to file
     FILE* fp = fopen("binary.ppm", "wb");
