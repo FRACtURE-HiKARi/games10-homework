@@ -18,7 +18,6 @@ Vector3f* framebuffer;
 Triangle_d* triangles;
 Triangle* triangles_h;
 __device__ int num_triangles = 0;
-__device__ unsigned long long num_finished = 0;
 int num_pixels;
 
 inline void printLastErr()
@@ -142,7 +141,7 @@ __device__ Vector3f trace(const Ray& ray, Triangle_d* ts, curandState* state)
         }
         
         //Vector3f wi = m->sample(wo, N);
-        Vector3f wi = sampleMaterial(m, wo, N, state);
+        Vector3f wi = sampleMaterial(m, -wo, N, state);
         Ray indir_ray(p, wi);
         Intersection_d nonemit_inter = getClosest(indir_ray, ts);
         if (nonemit_inter.happened && !nonemit_inter.m->hasEmission())
@@ -177,7 +176,7 @@ void CUDA_PT(Vector3f* fb, Triangle_d* ts, int spp, curandState* states)
     int tid = xi + width_d * yi;
     float x = (2 * (xi + 0.5) / (float)width_d - 1) * imageAspectRatio_d * scale_d;
     float y = (1 - 2 * (yi + 0.5) / (float)height_d) * scale_d;
-    curand_init(4321, tid, 0, &states[tid]);
+    curand_init(1234, tid, 0, &states[tid]);
     Vector3f result;
     Vector3f dir = normalize(Vector3f(-x, y, 1));
     Ray ray(*eye_pos_d, dir);
@@ -186,7 +185,6 @@ void CUDA_PT(Vector3f* fb, Triangle_d* ts, int spp, curandState* states)
         result += trace(ray, ts, &states[tid]) / (float)spp;
     }
     fb[tid] = result;
-    atomicAdd(&num_finished, 1ULL);
 }
 
 void gpuWaitThread() {cudaDeviceSynchronize();}
