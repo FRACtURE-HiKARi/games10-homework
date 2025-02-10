@@ -6,6 +6,7 @@ typedef uint32_t gid_t;
 
 #include <iostream>
 #include <unistd.h>
+#include "getopt.h"
 
 using namespace std;
 using namespace CGL;

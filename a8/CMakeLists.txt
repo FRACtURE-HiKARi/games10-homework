@@ -119,7 +119,10 @@ if(WIN32)
     endif(BUILD_DEBUG)
 
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${MSVC_CXX_FLAGS}")
-
+    set(FREETYPE_LIBRARY "D:/MSVS/MicrosoftVisualStudio/VC/Auxiliary/VS/lib/x64/freetype.lib")
+    add_definitions(-D_USE_MATH_DEFINES)
+    #include_directories("D:/MSVS/MicrosoftVisualStudio/VC/Auxiliary/VS/include")
+    #link_directories("D:/MSVS/MicrosoftVisualStudio/VC/Auxiliary/VS/lib/x64")
   endif(MSVC)
 
   if(MINGW)

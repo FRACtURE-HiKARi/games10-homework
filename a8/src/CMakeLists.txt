@@ -5,6 +5,7 @@ set(APPLICATION_SOURCE
     rope.cpp
     application.cpp
     main.cpp
+    getopt.c
 )
 
 #-------------------------------------------------------------------------------
@@ -34,7 +35,7 @@ add_executable(ropesim ${APPLICATION_SOURCE})
 
 target_link_libraries( ropesim
     CGL ${CGL_LIBRARIES}
-    glew ${GLEW_LIBRARIES}
+    glew32 ${GLEW_LIBRARIES}
     glfw ${GLFW_LIBRARIES}
     ${OPENGL_LIBRARIES}
     ${FREETYPE_LIBRARIES}

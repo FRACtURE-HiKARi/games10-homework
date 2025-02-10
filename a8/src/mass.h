@@ -11,6 +11,11 @@ struct Mass {
       : start_position(position), position(position), last_position(position),
         mass(mass), pinned(pinned) {}
 
+  void move(Vector2D dx)
+  {
+    position += dx;
+    //last_position += dx;
+  }
   float mass;
   bool pinned;
 

@@ -17,7 +17,6 @@
  * 15-462 at Carnegie Mellon University.
  */
 
-
 namespace CGL {
 
 class Quaternion : public Vector4D {
