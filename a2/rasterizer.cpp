@@ -40,18 +40,21 @@ auto to_vec4(const Eigen::Vector3f& v3, float w = 1.0f)
     return Vector4f(v3.x(), v3.y(), v3.z(), w);
 }
 
-
-static bool insideTriangle(int x, int y, const Vector3f* _v)
-{   
-    // TODO : Implement this function to check if the point (x, y) is inside the triangle represented by _v[0], _v[1], _v[2]
+bool insideTriangle(float x, float y, const Vector3f* _v) {
     Vector3f P;
-    P << (float)x , (float) y , 0;
+    P << x , y , 0;
     float z1 = (P - _v[0]).cross(_v[0] - _v[1])(2);
     float z2 = (P - _v[1]).cross(_v[1] - _v[2])(2);
     float z3 = (P - _v[2]).cross(_v[2] - _v[0])(2);
     if ((z1<0 && z2<0 && z3<0) || (z1>0 && z2>0 && z3>0))
         return true;
     return false;
+}
+
+static bool insideTriangle(int x, int y, const Vector3f* _v)
+{   
+    // TODO : Implement this function to check if the point (x, y) is inside the triangle represented by _v[0], _v[1], _v[2]
+    return insideTriangle((float)x, (float)y, _v);
 }
 
 static std::tuple<float, float, float> computeBarycentric2D(float x, float y, const Vector3f* v)
@@ -112,7 +115,22 @@ void rst::rasterizer::draw(pos_buf_id pos_buffer, ind_buf_id ind_buffer, col_buf
 }
 
 
-float get_z_interpolate(int x, int y, const Triangle& t) {
+typedef Eigen::Vector2i Index2D;
+typedef std::priority_queue<Index2D, std::vector<Index2D>, std::function<bool(const Index2D&, const Index2D&)>> Index2D_PQ;
+
+//Modified form https://rosettacode.org/wiki/Bitmap/Bresenhanm%27s_line_algorithm#c
+void bresenham(int x0, int y0, int x1, int y1, Index2D_PQ& pixels) {
+    int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+    int dy = abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+    int erro = (dx > dy ? dx : -dy) / 2;
+    while(pixels.push(Index2D{x0, y0}), x0 != x1 || y0 != y1) {
+        int e2 = erro;
+        if(e2 > -dx) { erro -= dy; x0 += sx;}
+        if(e2 <  dy) { erro += dx; y0 += sy;}
+    } 
+}
+
+float get_z_interpolate(float x, float y, const Triangle& t) {
     auto[alpha, beta, gamma] = computeBarycentric2D(x, y, t.v);
     auto v = t.toVector4();
     float w_reciprocal = 1.0/(alpha / v[0].w() + beta / v[1].w() + gamma / v[2].w());
@@ -124,25 +142,53 @@ float get_z_interpolate(int x, int y, const Triangle& t) {
 //Screen space rasterization
 void rst::rasterizer::rasterize_triangle(const Triangle& t) {
     auto v = t.toVector4();
-    // TODO : Find out the bounding box of current triangle.
-    // iterate through the pixel and find if the current pixel is inside the triangle
-    int xm = (int)MIN(MIN(v[0](0), v[1](0)), v[2](0));
-    int ym = (int)MIN(MIN(v[0](1), v[1](1)), v[2](1));
-    int xM = (int)MAX(MAX(v[0](0), v[1](0)), v[2](0));
-    int yM = (int)MAX(MAX(v[0](1), v[1](1)), v[2](1));
-    for (int x = xm; x <= xM; x++) {
-        for (int y = ym; y <= yM; y++) {
-            if (insideTriangle(x, y, t.v)){
-                float z = get_z_interpolate(x, y, t);
-                int index = get_index(x, y);
-                if (z < depth_buf[index]){
-                    depth_buf[index] = z;
-                    frame_buf[index] = t.getColor();
+    auto color = t.getColor();
+    auto cmp = [](const Index2D& a, const Index2D& b) {
+        if (a.y() == b.y()) {
+            return a.x() > b.x();
+        }
+        return a.y() > b.y();
+    };
+    Index2D_PQ edge_pixels(cmp);
+    int x1 = floorf(v[0](0)), x2 = floorf(v[1](0)), x3 = floorf(v[2](0));
+    int y1 = floorf(v[0](1)), y2 = floorf(v[1](1)), y3 = floorf(v[2](1));
+    bresenham(x1, y1, x2, y2, edge_pixels);
+    bresenham(x2, y2, x3, y3, edge_pixels);
+    bresenham(x3, y3, x1, y1, edge_pixels);
+    int index;
+    while (!edge_pixels.empty()) {
+        auto pixel = edge_pixels.top();
+        edge_pixels.pop();
+        int px = pixel.x(), py = pixel.y();
+        // handle edge pixel
+        int index;
+        for (int dy = 0; dy < 2; dy ++) {
+            for (int dx = 0; dx < 2; dx ++) {
+                float x0 = (float)px + 0.5f*dx, y0 = (float)py + 0.5f*dy;
+                if (insideTriangle(x0, y0, t.v)) {
+                    float z = get_z_interpolate(x0, y0, t);
+                    index = get_index(px, py) + (dy*2 + dx);
+                    if (z < depth_buf[index]) {
+                        depth_buf[index] = z;
+                        frame_buf[index] = t.getColor();
+                    }
+                }
+            }
+        }
+        // handle internal pixels
+        if (py == edge_pixels.top().y()) {
+            for (int x = px + 1; x < edge_pixels.top().x(); x++) {
+                float z = get_z_interpolate(x, py, t);
+                index = get_index(x, py);
+                if (z < depth_buf[index]) {
+                    for (int i = 0; i < 4; i++) {
+                        depth_buf[index + i] = z;
+                        frame_buf[index + i] = t.getColor();
+                    }
                 }
             }
         }
     }
-    // TODO : set the current pixel (use the set_pixel function) to the color of the triangle (use getColor function) if it should be painted.
 }
 
 void rst::rasterizer::set_model(const Eigen::Matrix4f& m)
@@ -164,7 +210,7 @@ void rst::rasterizer::clear(rst::Buffers buff)
 {
     if ((buff & rst::Buffers::Color) == rst::Buffers::Color)
     {
-        std::fill(frame_buf.begin(), frame_buf.end(), Eigen::Vector3f{0, 0, 0});
+        std::fill(frame_buf.begin(), frame_buf.end(), Eigen::Vector3f{0, 0, 0});std::fill(frame_buf_final.begin(), frame_buf_final.end(), Eigen::Vector3f{0, 0, 0});
     }
     if ((buff & rst::Buffers::Depth) == rst::Buffers::Depth)
     {
@@ -174,13 +220,14 @@ void rst::rasterizer::clear(rst::Buffers buff)
 
 rst::rasterizer::rasterizer(int w, int h) : width(w), height(h)
 {
-    frame_buf.resize(w * h);
-    depth_buf.resize(w * h);
+    frame_buf.resize(w * h * 4);
+    depth_buf.resize(w * h * 4);
+    frame_buf_final.resize(w * h);
 }
 
 int rst::rasterizer::get_index(int x, int y)
 {
-    return (height-1-y)*width + x;
+    return ((height-1-y)*width + x)*4;
 }
 
 void rst::rasterizer::set_pixel(const Eigen::Vector3f& point, const Eigen::Vector3f& color)
@@ -191,4 +238,13 @@ void rst::rasterizer::set_pixel(const Eigen::Vector3f& point, const Eigen::Vecto
 
 }
 
+std::vector<Eigen::Vector3f>& rst::rasterizer::frame_buffer() {
+    for (int i = 0; i < frame_buf_final.size(); i++) {
+        for (int j = 0; j < 4; j++ ) {
+            frame_buf_final[i] += frame_buf[i*4 + j];
+        }
+        frame_buf_final[i] /= 4;
+    }
+    return frame_buf_final;
+}
 // clang-format on

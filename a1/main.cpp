@@ -21,12 +21,17 @@ Eigen::Matrix4f get_view_matrix(Eigen::Vector3f eye_pos)
 
 Eigen::Matrix4f get_model_matrix(float rotation_angle)
 {
-    Eigen::Matrix4f model = Eigen::Matrix4f::Identity();
+    Eigen::Matrix4f model;
 
     // TODO: Implement this function
     // Create the model matrix for rotating the triangle around the Z axis.
     // Then return it.
-
+    float cosx = cosf(rotation_angle / 180 * MY_PI);
+    float sinx = sinf(rotation_angle / 180 * MY_PI);
+    model << cosx, -sinx , 0, 0,  \
+             sinx,  cosx,  0, 0,  \
+             0,     0,     1, 0,  \
+             0,     0,     0, 1;
     return model;
 }
 
@@ -35,13 +40,23 @@ Eigen::Matrix4f get_projection_matrix(float eye_fov, float aspect_ratio,
 {
     // Students will implement this function
 
-    Eigen::Matrix4f projection = Eigen::Matrix4f::Identity();
-
     // TODO: Implement this function
     // Create the projection matrix for the given parameters.
     // Then return it.
-
-    return projection;
+    float t = zNear * tanf(eye_fov / 360 * MY_PI);
+    float r = t * aspect_ratio;
+    Eigen::Matrix4f Mortho1 = Eigen::Matrix4f::Identity();
+    Eigen::Matrix4f Mortho2 = Eigen::Matrix4f::Identity();
+    Eigen::Vector4f diag;
+    diag << 1/r, 1/t, 2/(zNear - zFar), 1;
+    Mortho1.diagonal() = diag;
+    Mortho2(2, 3) = -(zNear + zFar) / 2;
+    Eigen::Matrix4f Mpersp;
+    Mpersp << zNear, 0, 0, 0, \
+              0, zNear, 0, 0, \
+              0, 0, zNear + zFar, -zNear * zFar, \
+              0, 0, 1, 0;
+    return Mortho1 * Mortho2 * Mpersp;
 }
 
 int main(int argc, const char** argv)
